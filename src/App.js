@@ -18,6 +18,7 @@ function App() {
     const [auth, setAuth] = useState(null); // Firebase Auth instance
     // eslint-disable-next-line no-unused-vars
     const [db, setDb] = useState(null); // Firebase Firestore instance
+    // eslint-disable-next-line no-unused-vars
     const [storage, setStorage] = useState(null); // Firebase Storage instance
     const [userId, setUserId] = useState(null); // User ID from Firebase Auth
 
@@ -198,52 +199,6 @@ function App() {
             setIsLoading(false);
         }
     };
-
-    /**
-     * Function to upload a file to Firebase Storage.
-     * This is a conceptual function. You would call it when a file needs to be saved,
-     * e.g., when an audio recording is completed, or a button is clicked to attach a document.
-     *
-     * @param {File | Blob} fileBlob The file (e.g., a Blob from an audio recorder or a File from an input)
-     * @param {string} filename The desired name for the file in Storage (e.g., "assessment_audio_YYYYMMDD_HHMMSS.webm")
-     * @returns {Promise<string|null>} The download URL of the uploaded file, or null if an error occurred.
-     */
-    const uploadAssessmentFile = async (fileBlob, filename) => {
-        if (!storage || !userId || !fileBlob) {
-            console.error("Firebase Storage not initialized, no user ID, or no file provided.");
-            return null;
-        }
-
-        try {
-            // Define the storage path: user_uploads/YOUR_USER_ID/filename
-            // This path should align with your Firebase Storage security rules.
-            const fileRef = ref(storage, `user_uploads/${userId}/${filename}`);
-            console.log(`Attempting to upload file to: ${fileRef.fullPath}`);
-
-            // Upload the file
-            const uploadResult = await uploadBytes(fileRef, fileBlob);
-            console.log("File uploaded successfully:", uploadResult);
-
-            // Get the download URL
-            const downloadURL = await getDownloadURL(uploadResult.ref);
-            console.log("File download URL:", downloadURL);
-
-            // You might want to save this downloadURL in Firestore along with other assessment data
-            // For example, in a new 'assessments' collection.
-            // await addDoc(collection(db, `artifacts/${appId}/users/${userId}/assessments`), {
-            //     type: 'audio_recording',
-            //     fileUrl: downloadURL,
-            //     timestamp: serverTimestamp(),
-            //     chatSessionId: 'currentSessionIdHere' // Link to current chat if applicable
-            // });
-
-            return downloadURL;
-        } catch (error) {
-            console.error("Error uploading file to Firebase Storage:", error);
-            return null;
-        }
-    };
-
 
     // Function to reset the chat and show the intro modal
     const resetChat = async () => {
