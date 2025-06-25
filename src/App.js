@@ -2,7 +2,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
+import { getFirestore, collection, addDoc, query, orderBy, onSnapshot, serverTimestamp } from 'firebase/firestore'; // Import Firestore functions
+import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage"; // Import Storage functions
 
 function App() {
     // State variables for managing chat messages, user input, loading status, and UI modals
@@ -10,10 +11,14 @@ function App() {
     const [userInput, setUserInput] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [showIntroModal, setShowIntroModal] = useState(true);
+    const [isFirebaseReady, setIsFirebaseReady] = useState(false); // New state to track Firebase readiness
 
-    // State variables for Firebase authentication and database instances
+    // State variables for Firebase authentication, database, and storage instances
+    // eslint-disable-next-line no-unused-vars
     const [auth, setAuth] = useState(null); // Firebase Auth instance
+    // eslint-disable-next-line no-unused-vars
     const [db, setDb] = useState(null); // Firebase Firestore instance
+    const [storage, setStorage] = useState(null); // Firebase Storage instance
     const [userId, setUserId] = useState(null); // User ID from Firebase Auth
 
     // Ref for automatically scrolling to the latest message
@@ -39,36 +44,33 @@ function App() {
 
     // Firebase Initialization and Authentication
     useEffect(() => {
-        // Retrieve app ID and Firebase config from global variables (provided by Canvas environment)
+        // eslint-disable-next-line no-unused-vars
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
         const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
 
         try {
-            // Initialize Firebase app with the provided configuration
             const app = initializeApp(firebaseConfig);
             const authInstance = getAuth(app);
             const dbInstance = getFirestore(app);
-            setAuth(authInstance); // Set auth instance to state
-            setDb(dbInstance); // Set firestore instance to state
+            const storageInstance = getStorage(app); // Initialize Firebase Storage
 
-            // Set up an authentication state listener
-            const unsubscribe = onAuthStateChanged(authInstance, async (user) => {
+            setAuth(authInstance);
+            setDb(dbInstance);
+            setStorage(storageInstance); // Set Storage instance to state
+
+            const unsubscribeAuth = onAuthStateChanged(authInstance, async (user) => {
                 if (user) {
-                    // If a user is signed in, set their UID
                     setUserId(user.uid);
+                    setIsFirebaseReady(true); // Firebase is ready once user is authenticated
                     console.log("Firebase user signed in:", user.uid);
                 } else {
-                    // If no user is signed in, attempt anonymous sign-in or custom token sign-in
                     console.log("No Firebase user signed in. Attempting anonymous sign-in.");
                     try {
-                        // Check for an initial authentication token (from Canvas environment)
                         const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
                         if (initialAuthToken) {
-                            // Sign in with custom token if available
                             await signInWithCustomToken(authInstance, initialAuthToken);
                             console.log("Signed in with custom token.");
                         } else {
-                            // Otherwise, sign in anonymously
                             await signInAnonymously(authInstance);
                             console.log("Signed in anonymously.");
                         }
@@ -78,12 +80,35 @@ function App() {
                 }
             });
 
-            // Clean up the authentication state listener on component unmount
-            return () => unsubscribe();
+            return () => unsubscribeAuth(); // Cleanup auth listener
         } catch (error) {
             console.error("Failed to initialize Firebase:", error);
         }
-    }, []); // Empty dependency array ensures this effect runs only once on mount
+    }, []);
+
+    // Firestore Listener for Chat History
+    useEffect(() => {
+        if (db && userId && isFirebaseReady) {
+            const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+            // Firestore path for private user data: /artifacts/{appId}/users/{userId}/chatHistory
+            const chatCollectionRef = collection(db, `artifacts/${appId}/users/${userId}/chatHistory`);
+            // Order by timestamp to maintain message order
+            const q = query(chatCollectionRef, orderBy('timestamp', 'asc'));
+
+            const unsubscribeSnapshot = onSnapshot(q, (snapshot) => {
+                const fetchedMessages = snapshot.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data()
+                }));
+                setMessages(fetchedMessages);
+                console.log("Chat history fetched:", fetchedMessages);
+            }, (error) => {
+                console.error("Error fetching chat history from Firestore:", error);
+            });
+
+            return () => unsubscribeSnapshot(); // Cleanup snapshot listener
+        }
+    }, [db, userId, isFirebaseReady]); // Dependencies for this effect
 
     // Effect to scroll to the latest message whenever messages state changes
     useEffect(() => {
@@ -93,32 +118,43 @@ function App() {
     // Function to handle sending a message
     const sendMessage = async (e) => {
         e.preventDefault(); // Prevent default form submission behavior
-        if (userInput.trim() === '' || isLoading) return; // Don't send empty messages or if loading
+        if (userInput.trim() === '' || isLoading || !isFirebaseReady) return; // Don't send empty messages or if loading or Firebase not ready
 
-        // Add user message to the messages state
-        const newUserMessage = { text: userInput, sender: 'user' };
+        const newUserMessage = {
+            text: userInput,
+            sender: 'user',
+            timestamp: serverTimestamp() // Add server timestamp
+        };
+
+        // Update local state immediately for responsiveness
         setMessages((prevMessages) => [...prevMessages, newUserMessage]);
-        setUserInput(''); // Clear user input field
-        setIsLoading(true); // Set loading state to true
+        setUserInput('');
+        setIsLoading(true);
 
         try {
+            // Save user message to Firestore
+            const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+            const chatCollectionRef = collection(db, `artifacts/${appId}/users/${userId}/chatHistory`);
+            await addDoc(chatCollectionRef, newUserMessage);
+            console.log("User message saved to Firestore.");
+
             // Prepare chat history for the AI, including the role prompt and previous messages
-            let chatHistory = [{ role: "user", parts: [{ text: aiRolePrompt }] }];
+            // The history for startChat should contain everything *before* the current turn.
+            let chatHistoryForAI = [{ role: "user", parts: [{ text: aiRolePrompt }] }];
             messages.forEach(msg => {
-                chatHistory.push({
+                chatHistoryForAI.push({
                     role: msg.sender === 'user' ? 'user' : 'model',
                     parts: [{ text: msg.text }]
                 });
             });
-            chatHistory.push({ role: "user", parts: [{ text: userInput }] }); // Add the current user input
+            chatHistoryForAI.push({ role: "user", parts: [{ text: userInput }] }); // Add the current user input for AI
 
             // Make a fetch call to the Netlify Function (serverless endpoint)
-            // This endpoint will handle the interaction with the Gemini API
             const response = await fetch('/.netlify/functions/chat', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    chatHistory: chatHistory,
+                    chatHistory: chatHistoryForAI, // Send the full history for context
                     generationConfig: {
                         temperature: 0.7,
                         maxOutputTokens: 800,
@@ -126,40 +162,107 @@ function App() {
                 })
             });
 
-            // Check if the response from the Netlify Function was successful
             if (!response.ok) {
                 const errorData = await response.json();
                 console.error("Netlify Function error (response not OK):", response.status, response.statusText, errorData);
                 throw new Error(`Netlify Function error: ${response.status} ${response.statusText}`);
             }
 
-            // Parse the JSON response from the Netlify Function
             const result = await response.json();
 
-            // Add the AI's response to the messages state
             if (result.aiResponseText) {
-                setMessages((prevMessages) => [...prevMessages, { text: result.aiResponseText, sender: 'ai' }]);
+                const newAiMessage = {
+                    text: result.aiResponseText,
+                    sender: 'ai',
+                    timestamp: serverTimestamp() // Add server timestamp
+                };
+                // Save AI message to Firestore
+                await addDoc(chatCollectionRef, newAiMessage);
+                console.log("AI message saved to Firestore.");
+                // State update will happen via Firestore listener (onSnapshot)
             } else {
-                // Handle unexpected response structure from the Netlify Function
                 console.error("Unexpected response from Netlify Function (missing aiResponseText):", result);
-                setMessages((prevMessages) => [...prevMessages, { text: "I'm sorry, I couldn't generate a response. Please try again.", sender: 'ai' }]);
+                const errorMessage = { text: "I'm sorry, I couldn't generate a response. Please try again.", sender: 'ai', timestamp: serverTimestamp() };
+                await addDoc(chatCollectionRef, errorMessage); // Save error message
             }
 
         } catch (error) {
-            // Handle any errors during the fetch or AI communication
-            console.error("Error communicating with AI via Netlify Function:", error);
-            setMessages((prevMessages) => [...prevMessages, { text: "There was an error connecting to the AI. Please check your console for details and try again.", sender: 'ai' }]);
+            console.error("Error communicating with AI or Firestore:", error);
+            const errorMessage = { text: "There was an error connecting to the AI. Please check your console for details and try again.", sender: 'ai', timestamp: serverTimestamp() };
+            if (db && userId) { // Only attempt to save if Firebase is initialized
+                const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+                const chatCollectionRef = collection(db, `artifacts/${appId}/users/${userId}/chatHistory`);
+                await addDoc(chatCollectionRef, errorMessage);
+            }
         } finally {
-            setIsLoading(false); // Reset loading state
+            setIsLoading(false);
         }
     };
 
+    /**
+     * Function to upload a file to Firebase Storage.
+     * This is a conceptual function. You would call it when a file needs to be saved,
+     * e.g., when an audio recording is completed, or a button is clicked to attach a document.
+     *
+     * @param {File | Blob} fileBlob The file (e.g., a Blob from an audio recorder or a File from an input)
+     * @param {string} filename The desired name for the file in Storage (e.g., "assessment_audio_YYYYMMDD_HHMMSS.webm")
+     * @returns {Promise<string|null>} The download URL of the uploaded file, or null if an error occurred.
+     */
+    const uploadAssessmentFile = async (fileBlob, filename) => {
+        if (!storage || !userId || !fileBlob) {
+            console.error("Firebase Storage not initialized, no user ID, or no file provided.");
+            return null;
+        }
+
+        try {
+            // Define the storage path: user_uploads/YOUR_USER_ID/filename
+            // This path should align with your Firebase Storage security rules.
+            const fileRef = ref(storage, `user_uploads/${userId}/${filename}`);
+            console.log(`Attempting to upload file to: ${fileRef.fullPath}`);
+
+            // Upload the file
+            const uploadResult = await uploadBytes(fileRef, fileBlob);
+            console.log("File uploaded successfully:", uploadResult);
+
+            // Get the download URL
+            const downloadURL = await getDownloadURL(uploadResult.ref);
+            console.log("File download URL:", downloadURL);
+
+            // You might want to save this downloadURL in Firestore along with other assessment data
+            // For example, in a new 'assessments' collection.
+            // await addDoc(collection(db, `artifacts/${appId}/users/${userId}/assessments`), {
+            //     type: 'audio_recording',
+            //     fileUrl: downloadURL,
+            //     timestamp: serverTimestamp(),
+            //     chatSessionId: 'currentSessionIdHere' // Link to current chat if applicable
+            // });
+
+            return downloadURL;
+        } catch (error) {
+            console.error("Error uploading file to Firebase Storage:", error);
+            return null;
+        }
+    };
+
+
     // Function to reset the chat and show the intro modal
-    const resetChat = () => {
+    const resetChat = async () => {
+        // Clear local messages immediately
         setMessages([]);
         setUserInput('');
         setIsLoading(false);
         setShowIntroModal(true);
+
+        // Optionally, clear chat history from Firestore for the current user
+        // This is more complex as you'd need to fetch all docs and delete them.
+        // For simplicity in this example, we'll just clear the local state
+        // and let the new session start fresh on UI. Past chat history
+        // would still be in Firestore unless explicitly deleted.
+        // If full reset including Firestore deletion is desired, you'd add:
+        // const q = query(collection(db, `artifacts/${appId}/users/${userId}/chatHistory`));
+        // const snapshot = await getDocs(q);
+        // snapshot.docs.forEach(async (doc) => { await deleteDoc(doc.ref); });
+        console.log("Chat reset locally. Firestore history remains unless explicitly cleared.");
     };
 
     // Functional component for the Start Assessment button
@@ -173,9 +276,23 @@ function App() {
     );
 
     // Function to close the intro modal and start the chat with an initial AI message
-    const closeModal = () => {
+    const closeModal = async () => {
         setShowIntroModal(false);
-        setMessages([{ text: "Thompson's Trinkets, Mr./Ms. Thompson speaking. How can I help you?", sender: 'ai' }]);
+        // Add initial AI message to Firestore, which will then update local state via listener
+        if (db && userId) {
+            const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+            const chatCollectionRef = collection(db, `artifacts/${appId}/users/${userId}/chatHistory`);
+            const initialAiMessage = {
+                text: "Thompson's Trinkets, Mr./Ms. Thompson speaking. How can I help you?",
+                sender: 'ai',
+                timestamp: serverTimestamp()
+            };
+            await addDoc(chatCollectionRef, initialAiMessage);
+            console.log("Initial AI message saved to Firestore.");
+        } else {
+            // Fallback for local testing where Firebase might not be fully ready
+            setMessages([{ text: "Thompson's Trinkets, Mr./Ms. Thompson speaking. How can I help you?", sender: 'ai' }]);
+        }
     };
 
     return (
@@ -273,11 +390,12 @@ function App() {
                         onChange={(e) => setUserInput(e.target.value)}
                         placeholder="Type your response..."
                         className="flex-grow p-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                        disabled={isLoading}
+                        disabled={isLoading || !isFirebaseReady}
                     />
                     <button
                         type="submit"
                         className="px-6 py-3 bg-indigo-600 text-white font-semibold rounded-xl shadow-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 transition duration-200 ease-in-out disabled:opacity-50"
+                        disabled={isLoading || !isFirebaseReady}
                     >
                         Send
                     </button>
