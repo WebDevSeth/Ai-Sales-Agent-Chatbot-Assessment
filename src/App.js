@@ -56,14 +56,14 @@ function App() {
         } else {
             // This path is for when running LOCALLY (npm start or netlify dev) OR DEPLOYED TO NETLIFY
             // This is YOUR ACTUAL Firebase project configuration from your Firebase Console.
-            firebaseConfig = {
-                apiKey: "AIzaSyDNzQKc6UIlKcWyYw36OexeQrYTMkO4F_U",
-                authDomain: "nex-agent-test.firebaseapp.com",
-                projectId: "nex-agent-test",
-                storageBucket: "nex-agent-test.firebasestorage.app",
-                messagingSenderId: "835940254767",
-                appId: "1:835940254767:web:3e01fc7d8da953eaa672da",
-                measurementId: "G-K72L3Y83XX"
+          firebaseConfig = {
+                apiKey: process.env.REACT_APP_FIREBASE_API_KEY,
+                authDomain: process.env.REACT_APP_FIREBASE_AUTH_DOMAIN,
+                projectId: process.env.REACT_APP_FIREBASE_PROJECT_ID,
+                storageBucket: process.env.REACT_APP_FIREBASE_STORAGE_BUCKET,
+                messagingSenderId: process.env.REACT_APP_FIREBASE_MESSAGING_SENDER_ID,
+                appId: process.env.REACT_APP_FIREBASE_APP_ID,
+                measurementId: process.env.REACT_APP_FIREBASE_MEASUREMENT_ID
             };
             console.warn("Using hardcoded Firebase config for local development and Netlify deployment. This is your actual project config.");
         }
