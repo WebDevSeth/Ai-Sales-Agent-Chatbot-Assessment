@@ -3,8 +3,6 @@ import React, { useState, useEffect, useRef } from 'react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, collection, addDoc, query, orderBy, onSnapshot, serverTimestamp } from 'firebase/firestore'; // Import Firestore functions
-// Removed Firebase Storage imports as they are not currently used:
-// import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
 
 function App() {
     // State variables for managing chat messages, user input, loading status, and UI modals
@@ -19,8 +17,6 @@ function App() {
     const [auth, setAuth] = useState(null); // Firebase Auth instance
     // eslint-disable-next-line no-unused-vars
     const [db, setDb] = useState(null); // Firebase Firestore instance
-    // Removed storage state variable as Firebase Storage is not currently used:
-    // const [storage, setStorage] = useState(null);
     const [userId, setUserId] = useState(null); // User ID from Firebase Auth
 
     // Ref for automatically scrolling to the latest message
@@ -46,21 +42,40 @@ function App() {
 
     // Firebase Initialization and Authentication
     useEffect(() => {
-        // eslint-disable-next-line no-unused-vars
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+        // The following globals (__app_id, __firebase_config, __initial_auth_token) are provided by the Canvas environment.
+        // When running locally, these will be `undefined`.
+        // FOR LOCAL DEVELOPMENT AND NETLIFY DEPLOYMENT: This block now uses your actual Firebase project's config.
+        let firebaseConfig = {}; // Default empty
+        if (typeof __firebase_config !== 'undefined' && __firebase_config) {
+            // This path is for when running within the Canvas environment (e.g., when I provide the code)
+            try {
+                firebaseConfig = JSON.parse(__firebase_config);
+            } catch (error) {
+                console.error("Error parsing __firebase_config:", error);
+            }
+        } else {
+            // This path is for when running LOCALLY (npm start or netlify dev) OR DEPLOYED TO NETLIFY
+            // This is your actual Firebase project configuration from your Firebase Console.
+            firebaseConfig = {
+                apiKey: "AIzaSyDNzQKc6UIlKcWyYw36OexeQrYTMkO4F_U",
+                authDomain: "nex-agent-test.firebaseapp.com",
+                projectId: "nex-agent-test",
+                storageBucket: "nex-agent-test.firebasestorage.app",
+                messagingSenderId: "835940254767",
+                appId: "1:835940254767:web:3e01fc7d8da953eaa672da",
+                measurementId: "G-K72L3Y83XX"
+            };
+            console.warn("Using hardcoded Firebase config for local development and Netlify deployment. Ensure this is your actual project config.");
+        }
+
 
         try {
-            const app = initializeApp(firebaseConfig);
+            const app = initializeApp(firebaseConfig); // Initialize with your provided config
             const authInstance = getAuth(app);
             const dbInstance = getFirestore(app);
-            // Removed Firebase Storage initialization as it's not currently used:
-            // const storageInstance = getStorage(app);
 
             setAuth(authInstance);
             setDb(dbInstance);
-            // Removed setStorage as storage is not currently used:
-            // setStorage(storageInstance);
 
             const unsubscribeAuth = onAuthStateChanged(authInstance, async (user) => {
                 if (user) {
@@ -75,8 +90,14 @@ function App() {
                             await signInWithCustomToken(authInstance, initialAuthToken);
                             console.log("Signed in with custom token.");
                         } else {
-                            await signInAnonymously(authInstance);
-                            console.log("Signed in anonymously.");
+                            // Attempt anonymous sign-in only if firebaseConfig actually has a projectId
+                            // Otherwise, it will silently fail or throw.
+                            if (firebaseConfig && firebaseConfig.projectId) { // Check if config is valid before attempting sign-in
+                                await signInAnonymously(authInstance);
+                                console.log("Signed in anonymously.");
+                            } else {
+                                console.warn("Firebase projectId not found in config. Anonymous sign-in skipped for local development.");
+                            }
                         }
                     } catch (error) {
                         console.error("Firebase authentication error:", error);
@@ -86,13 +107,17 @@ function App() {
 
             return () => unsubscribeAuth(); // Cleanup auth listener
         } catch (error) {
-            console.error("Failed to initialize Firebase:", error);
+            // This catch block handles errors from initializeApp if firebaseConfig is invalid
+            console.error("Failed to initialize Firebase app. Check firebaseConfig:", error);
+            // Keep isFirebaseReady false if initialization fails, which keeps input disabled
+            setIsFirebaseReady(false); // Explicitly set to false on init error
         }
     }, []);
 
     // Firestore Listener for Chat History
     useEffect(() => {
         if (db && userId && isFirebaseReady) {
+            // eslint-disable-next-line no-unused-vars
             const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
             // Firestore path for private user data: /artifacts/{appId}/users/{userId}/chatHistory
             const chatCollectionRef = collection(db, `artifacts/${appId}/users/${userId}/chatHistory`);
@@ -116,6 +141,7 @@ function App() {
 
     // Effect to scroll to the latest message whenever messages state changes
     useEffect(() => {
+        // Fix for typo: scrollIntoView
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [messages]);
 
