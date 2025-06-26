@@ -55,7 +55,7 @@ function App() {
             }
         } else {
             // This path is for when running LOCALLY (npm start or netlify dev) OR DEPLOYED TO NETLIFY
-            // This is your actual Firebase project configuration from your Firebase Console.
+            // Your ACTUAL Firebase project configuration from your Firebase Console.
             firebaseConfig = {
                 apiKey: "AIzaSyDNzQKc6UIlKcWyYw36OexeQrYTMkO4F_U",
                 authDomain: "nex-agent-test.firebaseapp.com",
@@ -65,7 +65,7 @@ function App() {
                 appId: "1:835940254767:web:3e01fc7d8da953eaa672da",
                 measurementId: "G-K72L3Y83XX"
             };
-            console.warn("Using hardcoded Firebase config for local development and Netlify deployment. Ensure this is your actual project config.");
+            console.warn("Using hardcoded Firebase config for local development and Netlify deployment. This is your actual project config.");
         }
 
 
@@ -141,7 +141,6 @@ function App() {
 
     // Effect to scroll to the latest message whenever messages state changes
     useEffect(() => {
-        // Fix for typo: scrollIntoView
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [messages]);
 
