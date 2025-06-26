@@ -3,7 +3,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, collection, addDoc, query, orderBy, onSnapshot, serverTimestamp } from 'firebase/firestore'; // Import Firestore functions
-import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage"; // Import Storage functions
+// Removed Firebase Storage imports as they are not currently used:
+// import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
 
 function App() {
     // State variables for managing chat messages, user input, loading status, and UI modals
@@ -13,13 +14,13 @@ function App() {
     const [showIntroModal, setShowIntroModal] = useState(true);
     const [isFirebaseReady, setIsFirebaseReady] = useState(false); // New state to track Firebase readiness
 
-    // State variables for Firebase authentication, database, and storage instances
+    // State variables for Firebase authentication and database instances
     // eslint-disable-next-line no-unused-vars
     const [auth, setAuth] = useState(null); // Firebase Auth instance
     // eslint-disable-next-line no-unused-vars
     const [db, setDb] = useState(null); // Firebase Firestore instance
-    // eslint-disable-next-line no-unused-vars
-    const [storage, setStorage] = useState(null); // Firebase Storage instance
+    // Removed storage state variable as Firebase Storage is not currently used:
+    // const [storage, setStorage] = useState(null);
     const [userId, setUserId] = useState(null); // User ID from Firebase Auth
 
     // Ref for automatically scrolling to the latest message
@@ -53,11 +54,13 @@ function App() {
             const app = initializeApp(firebaseConfig);
             const authInstance = getAuth(app);
             const dbInstance = getFirestore(app);
-            const storageInstance = getStorage(app); // Initialize Firebase Storage
+            // Removed Firebase Storage initialization as it's not currently used:
+            // const storageInstance = getStorage(app);
 
             setAuth(authInstance);
             setDb(dbInstance);
-            setStorage(storageInstance); // Set Storage instance to state
+            // Removed setStorage as storage is not currently used:
+            // setStorage(storageInstance);
 
             const unsubscribeAuth = onAuthStateChanged(authInstance, async (user) => {
                 if (user) {
@@ -374,7 +377,7 @@ function App() {
 
             {/* Introductory Modal */}
             {showIntroModal && (
-                <div className="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center p-4 z-50">
+                <div className="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center z-50 p-4">
                     <div className="bg-white rounded-xl shadow-2xl p-8 max-w-2xl w-full text-center transform scale-100 transition-all duration-300 ease-in-out">
                         <h2 className="text-3xl font-bold text-gray-800 mb-4">Welcome to the Nexlify Sales Assessment!</h2>
                         <p className="text-lg text-gray-700 mb-6">
