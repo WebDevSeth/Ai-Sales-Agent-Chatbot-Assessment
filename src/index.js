@@ -1,14 +1,17 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import App from './App'; // Import your main App component
+import './index.css'; // Assuming you might have some basic CSS here
+import App from './App';
+import reportWebVitals from './reportWebVitals';
 
-// Get the root DOM element where your React app will be mounted
-const rootElement = document.getElementById('root');
-
-// Create a React root and render the App component into it
-// This is the entry point for your React application
-ReactDOM.createRoot(rootElement).render(
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(
   <React.StrictMode>
-    <App /> {/* Render your main application component */}
+    <App />
   </React.StrictMode>
 );
+
+// If you want to start measuring performance in your app, pass a function
+// to log results (for example: reportWebVitals(console.log))
+// or send to an analytics endpoint. Learn more: https://bit.ly/CRA-vitals
+reportWebVitals();

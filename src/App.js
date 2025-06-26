@@ -43,9 +43,9 @@ function App() {
     // Firebase Initialization and Authentication
     useEffect(() => {
         // The following globals (__app_id, __firebase_config, __initial_auth_token) are provided by the Canvas environment.
-        // When running locally, these will be `undefined`.
-        // FOR LOCAL DEVELOPMENT AND NETLIFY DEPLOYMENT: This block now uses your actual Firebase project's config.
-        let firebaseConfig = {}; // Default empty
+        // They are generally not available when running locally or deployed to Netlify.
+        // This block ensures your app uses your specific Firebase configuration regardless of environment.
+        let firebaseConfig = {};
         if (typeof __firebase_config !== 'undefined' && __firebase_config) {
             // This path is for when running within the Canvas environment (e.g., when I provide the code)
             try {
@@ -55,7 +55,7 @@ function App() {
             }
         } else {
             // This path is for when running LOCALLY (npm start or netlify dev) OR DEPLOYED TO NETLIFY
-            // Your ACTUAL Firebase project configuration from your Firebase Console.
+            // This is YOUR ACTUAL Firebase project configuration from your Firebase Console.
             firebaseConfig = {
                 apiKey: "AIzaSyDNzQKc6UIlKcWyYw36OexeQrYTMkO4F_U",
                 authDomain: "nex-agent-test.firebaseapp.com",
@@ -70,6 +70,13 @@ function App() {
 
 
         try {
+            // Check if firebaseConfig has essential properties before initializing
+            if (!firebaseConfig.apiKey || !firebaseConfig.projectId) {
+                console.error("Firebase config is incomplete. Cannot initialize Firebase.");
+                setIsFirebaseReady(false); // Keep input disabled
+                return;
+            }
+
             const app = initializeApp(firebaseConfig); // Initialize with your provided config
             const authInstance = getAuth(app);
             const dbInstance = getFirestore(app);
